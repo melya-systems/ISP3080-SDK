@@ -23,11 +23,14 @@
 #include "nrf_drv_twi.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <math.h>
 
 // I2C Address
 #define LISDDE12_ACC_I2C_ADDR 0x18
 
 #define WHO_AM_I_DEFAULT 0x33
+
+#define LISxDH_AUTOINCREMENT_ADDR	(1UL << (7))
 
 // Accelerometer Register map
 #define STATUS_REG_AUX 0x07  // Default:  Type: r
@@ -295,11 +298,26 @@ uint32_t drv_lis2de12_temperature_get(int16_t *p_temperature);
  * @return NRF_SUCCESS    If the call was successful.
  */
 uint32_t drv_lis2de12_acceleration_get(int8_t *p_acc);
-
+uint32_t drv_lis2de12_acceleration_get2(int16_t *p_acc);
+uint32_t drv_lis2de12_acceleration_get3(uint8_t *buff);
 /**@brief Function to reboot memory content. 
  *
  * @return NRF_SUCCESS    If the call was successful.
  */
 uint32_t drv_lis2de12_reboot(void);
+
+
+/**@brief Functions to return the mg from the raw values of lis2de
+
+ */
+
+ // ST implementation 
+float_t lis2de12_from_fs2_to_mg(int16_t lsb);
+float_t lis2de12_from_fs4_to_mg(int16_t lsb);
+float_t lis2de12_from_fs8_to_mg(int16_t lsb);
+float_t lis2de12_from_fs16_to_mg(int16_t lsb);
+
+// Zepyhr OS implementation
+void lis2dh_convert(int16_t raw_val, uint32_t scale,double *val);
 
 #endif

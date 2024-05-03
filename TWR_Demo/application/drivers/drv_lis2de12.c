@@ -89,6 +89,34 @@ static uint32_t reg_read(uint8_t reg_addr, uint8_t *p_reg_val) {
     return NRF_SUCCESS;
 }
 
+/**@brief Function for reading registers.
+ *
+ * @param[in]  reg_addr            Address of the register to read.
+ * @param[out] p_reg_val           Pointer to a buffer to receive the read value.
+ *
+ * @retval NRF_SUCCESS             If operation was successful.
+ * @retval NRF_ERROR_BUSY          If the TWI drivers are busy.
+ */
+static uint32_t regs_read(uint8_t reg_addr, uint8_t *p_reg_val, uint8_t length) {
+    uint32_t err_code;
+
+    err_code = nrf_drv_twi_tx(m_lis2de12.p_cfg->p_twi_instance,
+        m_lis2de12.p_cfg->twi_addr,
+        &reg_addr,
+        1,
+        true);
+    VERIFY_SUCCESS(err_code);
+
+    err_code = nrf_drv_twi_rx(m_lis2de12.p_cfg->p_twi_instance,
+        m_lis2de12.p_cfg->twi_addr,
+        p_reg_val,
+        length);
+    VERIFY_SUCCESS(err_code);
+
+    return NRF_SUCCESS;
+}
+
+
 /**@brief Function for writing to a register.
  *
  * @param[in]  reg_addr            Address of the register to write to.
@@ -273,4 +301,84 @@ uint32_t drv_lis2de12_reboot(void) {
     VERIFY_SUCCESS(err_code);
 
     return NRF_SUCCESS;
+}
+
+/**@brief ST Implementation of the driver
+ */
+
+
+uint32_t drv_lis2de12_acceleration_get2(int16_t *p_acc) {
+    uint32_t err_code;
+
+    DRV_CFG_CHECK(m_lis2de12.p_cfg);
+    VERIFY_PARAM_NOT_NULL(p_acc);
+    uint8_t buff[6];
+  
+   /*
+    The idea of the implementation on the line 768: 
+     https://github.com/STMicroelectronics/lis2de12-pid/blob/f66fd6f0c3270b790c42b35f762ac0326a77c832/lis2de12_reg.c#L768
+    */
+    err_code = regs_read(OUT_X_H | LISxDH_AUTOINCREMENT_ADDR, buff, 6);
+    VERIFY_SUCCESS(err_code);
+
+    p_acc[0] = (int16_t)buff[1];
+    p_acc[0] = (p_acc[0] * 256) + (int16_t)buff[0];
+    p_acc[1] = (int16_t)buff[3];
+    p_acc[1] = (p_acc[1] * 256) + (int16_t)buff[2];
+    p_acc[2] = (int16_t)buff[5];
+    p_acc[2] = (p_acc[2] * 256) + (int16_t)buff[4];
+
+    return NRF_SUCCESS;
+}
+
+
+float_t lis2de12_from_fs2_to_mg(int16_t lsb)
+{
+  return ((float_t)lsb / 256.0f) * 15.6f;
+}
+
+float_t lis2de12_from_fs4_to_mg(int16_t lsb)
+{
+  return ((float_t)lsb / 256.0f) * 31.2f;
+}
+
+float_t lis2de12_from_fs8_to_mg(int16_t lsb)
+{
+  return ((float_t)lsb / 256.0f) * 62.5f;
+}
+
+float_t lis2de12_from_fs16_to_mg(int16_t lsb)
+{
+  return ((float_t)lsb / 256.0f) * 187.5f;
+}
+
+
+/**@brief Zephyr Implementation of the driver
+ */
+
+uint32_t drv_lis2de12_acceleration_get3(uint8_t *buff) {
+    uint32_t err_code;
+
+    DRV_CFG_CHECK(m_lis2de12.p_cfg);
+    VERIFY_PARAM_NOT_NULL(buff);
+
+    err_code = regs_read(OUT_X_H | LISxDH_AUTOINCREMENT_ADDR, buff, 6);
+    VERIFY_SUCCESS(err_code);
+
+    return NRF_SUCCESS;
+}
+
+
+void lis2dh_convert(int16_t raw_val, uint32_t scale,
+			   double *val)
+{
+	int32_t converted_val;
+	/*
+	 * maximum converted value we can get is: max(raw_val) * max(scale)
+	 *	max(raw_val >> 4) = +/- 2^11
+	 *	max(scale) = 114921
+	 *	max(converted_val) = 235358208 which is less than 2^31
+	 */
+	*val = ((double)(raw_val >> 4) * (double)scale);
+        *val /= 1000000;
 }

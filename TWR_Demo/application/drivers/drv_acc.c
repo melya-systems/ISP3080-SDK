@@ -53,6 +53,9 @@ static drv_acc_t m_drv_acc;
  */
 static void gpiote_evt_sceduled(void *p_event_data, uint16_t event_size) {
     drv_acc_evt_t evt;
+    // to remove the warinigs
+    evt.type= DRV_ACC_EVT_ERROR;
+   
 //TODO manage interupts
     m_drv_acc.evt_handler(&evt);
 }
@@ -218,7 +221,7 @@ uint32_t drv_acc_disable(void) {
 
 uint32_t drv_acc_get(float *p_acc) {
     uint32_t err_code = NRF_SUCCESS;
-    uint8_t raw_val[3];
+    uint8_t raw_val[6];
 
     VERIFY_PARAM_NOT_NULL(p_acc);
 
@@ -234,6 +237,107 @@ uint32_t drv_acc_get(float *p_acc) {
     p_acc[0] = (float)(raw_val[0]) * ACC_SCALE_2G;
     p_acc[1] = (float)(raw_val[1]) * ACC_SCALE_2G;
     p_acc[2] = (float)(raw_val[2]) * ACC_SCALE_2G;
+
+    // Release twi bus
+    err_code = drv_lis2de12_close();
+    VERIFY_SUCCESS(err_code);
+
+    return err_code;
+}
+
+/**@brief ST Implementation of the driver
+    code example: https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/lis2de12_STdC/examples/lis2de12_read_data_polling.c
+    driver implmentation: https://github.com/STMicroelectronics/lis2de12-pid/blob/f66fd6f0c3270b790c42b35f762ac0326a77c832/lis2de12_reg.c
+ */
+
+
+uint32_t drv_acc_get2(float_t *p_acc) {
+    uint32_t err_code = NRF_SUCCESS;
+    uint16_t raw_val[6];
+
+    VERIFY_PARAM_NOT_NULL(p_acc);
+
+    // Request twi bus
+    drv_lis2de12_open(&m_drv_acc.cfg);
+    VERIFY_SUCCESS(err_code);
+
+    err_code = drv_lis2de12_acceleration_get2(raw_val);
+    VERIFY_SUCCESS(err_code);
+
+    /*
+    The idea of the implementation on the line 168: 
+     https://github.com/STMicroelectronics/STMems_Standard_C_drivers/blob/master/lis2de12_STdC/examples/lis2de12_read_data_polling.c#L168C7-L168C36
+    */
+    p_acc[0] = lis2de12_from_fs2_to_mg(raw_val[0]);
+    p_acc[1] = lis2de12_from_fs2_to_mg(raw_val[1]);
+    p_acc[2] = lis2de12_from_fs2_to_mg(raw_val[2]);
+
+    // Release twi bus
+    err_code = drv_lis2de12_close();
+    VERIFY_SUCCESS(err_code);
+
+    return err_code;
+}
+
+
+/**@brief Zepyhr Implementation of the driver
+    https://elixir.bootlin.com/zephyr/latest/source/drivers/sensor/lis2dh/lis2dh.c
+ */
+
+
+#define LIS2DH_BUF_SZ			6
+#define sys_le16_to_cpu(x) ((uint16_t) ((((x) >> 8) & 0xff) | (((x) & 0xff) << 8)))
+
+#define SENSOR_G		9806650LL
+
+#define ACCEL_SCALE(sensitivity)			\
+	((SENSOR_G * (sensitivity) >> 14) / 100)
+
+static uint32_t lis2dh_reg_val_to_scale[] = {
+	ACCEL_SCALE(1600),
+	ACCEL_SCALE(3200),
+	ACCEL_SCALE(6400),
+	ACCEL_SCALE(19200),
+};
+
+union lis2dh_sample {
+	uint8_t raw[LIS2DH_BUF_SZ];
+	struct {
+		int16_t xyz[3];
+	};
+};
+
+uint32_t drv_acc_get3(double *p_acc) {
+    uint32_t err_code = NRF_SUCCESS;
+    static union lis2dh_sample lis2dh; 
+    VERIFY_PARAM_NOT_NULL(p_acc);
+
+    // Request twi bus
+    drv_lis2de12_open(&m_drv_acc.cfg);
+    VERIFY_SUCCESS(err_code);
+
+    /*
+    The idea of the implementation at line 131 and: 
+    https://elixir.bootlin.com/zephyr/latest/source/drivers/sensor/lis2dh/lis2dh.c#L131
+    */
+    err_code = drv_lis2de12_acceleration_get3(lis2dh.raw);
+    VERIFY_SUCCESS(err_code);
+
+    for (size_t i = 0; i < (3 * sizeof(int16_t)); i += sizeof(int16_t)) {
+        int16_t *sample =
+                (int16_t *)&lis2dh.raw[1 + i];
+
+        *sample = sys_le16_to_cpu(*sample);
+    }
+
+    /*
+    The idea of the implementation at line 124 and: 
+    https://elixir.bootlin.com/zephyr/latest/source/drivers/sensor/lis2dh/lis2dh.c#L124
+    */
+
+    lis2dh_convert(lis2dh.xyz[0], lis2dh_reg_val_to_scale[0], p_acc);
+    lis2dh_convert(lis2dh.xyz[1], lis2dh_reg_val_to_scale[1], p_acc);
+    lis2dh_convert(lis2dh.xyz[2], lis2dh_reg_val_to_scale[2], p_acc);
 
     // Release twi bus
     err_code = drv_lis2de12_close();

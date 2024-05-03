@@ -83,5 +83,7 @@ uint32_t drv_acc_disable(void);
  * @retval NRF_SUCCESS.
  */
 uint32_t drv_acc_get(float *acc_value);
+uint32_t drv_acc_get2(float_t *p_acc);
+uint32_t drv_acc_get3(double *p_acc);
 
 #endif

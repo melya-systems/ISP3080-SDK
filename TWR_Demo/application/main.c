@@ -34,6 +34,11 @@
 #include "nrf_sdm.h"
 #include <stdint.h>
 #include <string.h>
+#include "drv_acc.h"
+#include "nrf_drv_twi.h"
+
+
+APP_TIMER_DEF(m_repeated_timer_id); 
 
 #define DEAD_BEEF 0xDEADBEEF /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
@@ -264,15 +269,90 @@ void ble_mgmt_module_init(void) {
     APP_ERROR_CHECK(err_code);
 }
 
+
+
+void event_handler(drv_acc_evt_t const *p_evt){
+  NRF_LOG_INFO("TODO.");
+
+}
+
+/**@brief Timeout/Callback function of the timer m_repeated_timer_id 
+ */
+
+
+#define algo_choice 1
+
+static void repeated_timer_handler(void * p_context)
+{
+#if algo_choice == 1
+#pragma message("InsightSIP solution")
+    static float accel_data[3] = {0};
+    drv_acc_get(accel_data);
+#elif  algo_choice == 2
+  #pragma message("ST solution")
+    static float_t accel_data[3] = {0};
+    drv_acc_get2(accel_data);
+
+#elif  algo_choice == 3
+  #pragma message("Zephyr solution")
+    static double accel_data[3] = {0};
+    drv_acc_get3(accel_data);
+    
+#else
+  #error Unsupported choice setting
+#endif
+    NRF_LOG_INFO("x = " NRF_LOG_FLOAT_MARKER " m/s*s", NRF_LOG_FLOAT(accel_data[0]));
+    NRF_LOG_INFO("y = " NRF_LOG_FLOAT_MARKER " m/s*s", NRF_LOG_FLOAT(accel_data[1]));
+    NRF_LOG_INFO("z = " NRF_LOG_FLOAT_MARKER " m/s*s", NRF_LOG_FLOAT(accel_data[2]));
+}
+
+
 /**@brief Function for application main entry.
  */
 int main(void) {
-    log_init();
 
-    // Initialize Power & Timer.
+    uint32_t err_code;
+    
+    // Initialize Logs, Power & Timer.
+    log_init();
     timers_init();
     power_management_init();
 
+    static const nrf_drv_twi_t m_twi = NRF_DRV_TWI_INSTANCE(1);
+
+    const nrf_drv_twi_config_t twi_config = {
+      .scl                    = NRF_GPIO_PIN_MAP(1, 7),  // enable pin P1_07
+      .sda                    = NRF_GPIO_PIN_MAP(1, 2),  // enable pin P1_02,
+      .frequency              = NRF_DRV_TWI_FREQ_100K,
+      .interrupt_priority     = APP_IRQ_PRIORITY_MID,
+      .clear_bus_init         = false
+    };
+
+    drv_acc_init_t lis2dh_params;
+    lis2dh_params.evt_handler= event_handler;
+    lis2dh_params.p_twi_cfg = &twi_config;
+    lis2dh_params.p_twi_instance = &m_twi;
+    lis2dh_params.pin_int1 = NRF_GPIO_PIN_MAP(0, 24),  // enable pin P0_24
+    lis2dh_params.pin_int2 = NRF_GPIO_PIN_MAP(1, 4),  // enable pin P1_04
+    lis2dh_params.twi_addr = LISDDE12_ACC_I2C_ADDR;
+  
+    // enable accelerometer
+    nrf_gpio_cfg_output(NRF_GPIO_PIN_MAP(1, 6));
+    nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 6));
+    nrf_delay_ms(5);
+
+    drv_acc_init(&lis2dh_params);
+    drv_acc_enable();
+
+    err_code = app_timer_create(&m_repeated_timer_id,
+                        APP_TIMER_MODE_REPEATED,
+                        repeated_timer_handler);
+
+    APP_ERROR_CHECK(err_code);
+    err_code = app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(1000), NULL);
+    APP_ERROR_CHECK(err_code);
+
+/*
     // Initialize modules
 #if defined(BOARD_ISP3080_UX_TG)
     batt_meas_module_init();
@@ -283,13 +363,13 @@ int main(void) {
     // Start modules.
     m_range_ble_uuid_get(&adv_uuid);
     m_ble_mgmt_start(adv_uuid);
-
+*/
     // Set current mode pin before starting ranging operation (only for TAGs).
     if (PIN_CURR_MODE != 255) {
         nrf_gpio_pin_set(PIN_CURR_MODE);
         nrf_gpio_cfg_output(PIN_CURR_MODE);
     }
-    m_range_start();
+    //m_range_start();
 
     // Enter main loop.
     for (;;) {
