@@ -3940,7 +3940,7 @@
 // <e> NRFX_TWIM_ENABLED - nrfx_twim - TWIM peripheral driver
 //==========================================================
 #ifndef NRFX_TWIM_ENABLED
-#define NRFX_TWIM_ENABLED 0
+#define NRFX_TWIM_ENABLED 1
 #endif
 // <q> NRFX_TWIM0_ENABLED  - Enable TWIM0 instance
  
@@ -4192,7 +4192,7 @@
  
 
 #ifndef NRFX_TWI1_ENABLED
-#define NRFX_TWI1_ENABLED 0
+#define NRFX_TWI1_ENABLED 1
 #endif
 
 // <o> NRFX_TWI_DEFAULT_CONFIG_FREQUENCY  - Frequency
