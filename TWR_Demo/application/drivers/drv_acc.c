@@ -43,21 +43,19 @@ typedef struct
     bool enabled;               ///< Driver enabled.
     drv_lis2de12_twi_cfg_t cfg; ///< TWI configuraion.
     drv_acc_evt_handler_t evt_handler;
+    uint8_t full_scale;
 } drv_acc_t;
 
 /**@brief configuration.
  */
 static drv_acc_t m_drv_acc;
+static drv_acc_evt_t evt;
 
 /**@brief GPIOTE sceduled handler, executed in main-context.
  */
 static void gpiote_evt_sceduled(void *p_event_data, uint16_t event_size) {
-    drv_acc_evt_t evt;
-    // to remove the warinigs
-    evt.type= DRV_ACC_EVT_ERROR;
-   
-//TODO manage interupts
-    m_drv_acc.evt_handler(&evt);
+
+    m_drv_acc.evt_handler((drv_acc_evt_t*)p_event_data);
 }
 
 /**@brief GPIOTE event handler, executed in interrupt-context.
@@ -66,11 +64,13 @@ static void gpiote_evt_handler(nrf_drv_gpiote_pin_t pin, nrf_gpiote_polarity_t a
     uint32_t err_code;
 
     if (pin == m_drv_acc.cfg.pin_int1) {
-        err_code = app_sched_event_put(0, 0, gpiote_evt_sceduled);
+        evt.type= DRV_ACC_EVT_1;
+        err_code = app_sched_event_put(&evt, sizeof(evt), gpiote_evt_sceduled);
         APP_ERROR_CHECK(err_code);
     }
     if (pin == m_drv_acc.cfg.pin_int2) {
-        err_code = app_sched_event_put(0, 0, gpiote_evt_sceduled);
+        evt.type= DRV_ACC_EVT_2;
+        err_code = app_sched_event_put(&evt, sizeof(evt), gpiote_evt_sceduled);
         APP_ERROR_CHECK(err_code);
     }
 }
@@ -128,13 +128,16 @@ uint32_t drv_acc_init(drv_acc_init_t *p_params) {
     return err_code;
 }
 
-uint32_t drv_acc_enable(void) {
+uint32_t drv_acc_enable(uint8_t full_scale, uint8_t output_data_rate) {
     uint32_t err_code;
+        uint8_t tmp;
 
     if (m_drv_acc.enabled) {
         return NRF_SUCCESS;
     }
     m_drv_acc.enabled = true;
+
+    m_drv_acc.full_scale = full_scale;
 
     // Enable interrupt pins
     if (m_drv_acc.cfg.pin_int1 != DRV_ACC_PIN_NOT_USED)
@@ -145,14 +148,16 @@ uint32_t drv_acc_enable(void) {
     const drv_lis2de12_cfg_t lis2de12_cfg =
         {
             .reg_vals =
-                {
-                    .ctrl_reg1 = BITS_XEN | BITS_YEN | BITS_ZEN | BITS_LPEN | BITS_ODR_10HZ},
-            .reg_selects =
-                {
+             {
+                    .ctrl_reg1 = BITS_XEN | BITS_YEN | BITS_ZEN | BITS_LPEN | output_data_rate,
+                    .ctrl_reg4 = full_scale | BITS_BDU
+
+             },       
+            .reg_selects = {
                     .ctrl_reg1 = true,
                     .ctrl_reg2 = false,
                     .ctrl_reg3 = false,
-                    .ctrl_reg4 = false,
+                    .ctrl_reg4 = true,
                     .ctrl_reg5 = false,
                     .ctrl_reg6 = false,
                     .temp_cfg_reg = false,
@@ -168,12 +173,152 @@ uint32_t drv_acc_enable(void) {
     err_code = drv_lis2de12_cfg_set(&lis2de12_cfg);
     VERIFY_SUCCESS(err_code);
 
+    // read register to remove previous interrupts
+    err_code = reg_read(INT1_CFG, &tmp);
+    VERIFY_SUCCESS(err_code);
+    NRF_LOG_INFO("INT1_SRC(0x%x): 0x%x",INT1_SRC, tmp);
+
     // Release twi bus
     err_code = drv_lis2de12_close();
     VERIFY_SUCCESS(err_code);
 
     return NRF_SUCCESS;
 }
+
+uint32_t drv_acc_check_reg(void) {
+    uint32_t err_code;
+    uint8_t threshold;
+    uint8_t duration;
+
+    drv_lis2de12_cfg_t lis2de12_cfg =
+        {
+    
+            .reg_selects = {
+                    .ctrl_reg1 = true,
+                    .ctrl_reg2 = true,
+                    .ctrl_reg3 = true,
+                    .ctrl_reg4 = true,
+                    .ctrl_reg5 = true,
+                    .ctrl_reg6 = true,
+                    .temp_cfg_reg = true,
+                    .fifo_ctrl_reg = true,
+                    .int1_cfg = true,
+                    .int2_cfg = true,
+                    .click_cfg = true}};
+
+    // Request twi bus
+    err_code = drv_lis2de12_open(&m_drv_acc.cfg);
+    VERIFY_SUCCESS(err_code);
+
+    err_code =  drv_lis2de12_get_threshold_and_duratio_wakeup(&threshold,&duration);
+    VERIFY_SUCCESS(err_code);
+  
+
+    err_code = drv_lis2de12_cfg_get(&lis2de12_cfg);
+    VERIFY_SUCCESS(err_code);
+
+    // Release twi bus
+    err_code = drv_lis2de12_close();
+    VERIFY_SUCCESS(err_code);
+
+    return NRF_SUCCESS;
+}
+
+
+static uint8_t convert_to_register_value(uint8_t full_scale,uint32_t threshold){
+  
+  uint32_t divide_factor;
+  // the values are defined in the datasheet of lis2dh
+  switch (full_scale) {
+        case BITS_FS_2G:
+          divide_factor = 16;
+          break;
+    case BITS_FS_4G:
+          divide_factor = 32;
+          break;
+    case BITS_FS_8G:
+          divide_factor = 62;
+          break;
+    case BITS_FS_16G:
+          divide_factor = 186;
+          break;
+    defualt:
+        // this is an invalid value
+        VERIFY_SUCCESS(NRF_ERROR_INVALID_PARAM);
+  }
+
+  return (uint8_t)(threshold/divide_factor);
+}
+
+uint32_t drv_acc_interrupt_enable_ia1(uint32_t threshold,uint8_t duration) {
+    uint32_t err_code;
+
+
+    const drv_lis2de12_cfg_t lis2de12_cfg =
+        {
+            .reg_vals =
+                {
+                    // AOI1 interrupt generation is routed to INT1 pin.
+                    .ctrl_reg3 = BITS_I1_IA1,
+                    // letch the output till the value is not read from the INT_SRC register
+                    .ctrl_reg5 = BITS_LIR_INT1,
+                    // enable the wake-up events on the x,y,z only when there are positive
+                    .int1_cfg  =   BITS_YHIE/*| BITS_XHIE | BITS_ZHIE*/ 
+
+                },
+            .reg_selects =
+                {
+                    .ctrl_reg1 = false,
+                    .ctrl_reg2 = false,
+                    .ctrl_reg3 = true,
+                    .ctrl_reg4 = false,
+                    .ctrl_reg5 = true,
+                    .ctrl_reg6 = false,
+                    .temp_cfg_reg = false,
+                    .fifo_ctrl_reg = false,
+                    .int1_cfg = true,
+                    .int2_cfg = false,
+                    .click_cfg = false}};
+
+    // Request twi bus
+    err_code = drv_lis2de12_open(&m_drv_acc.cfg);
+    VERIFY_SUCCESS(err_code);
+
+    // eanble duration and threshold value
+    uint8_t threshold_8bits = convert_to_register_value(m_drv_acc.full_scale, threshold);
+    err_code =  drv_lis2de12_set_threshold_and_duratio_wakeup(threshold_8bits,duration);
+    VERIFY_SUCCESS(err_code);
+  
+    err_code = drv_lis2de12_cfg_set(&lis2de12_cfg);
+    VERIFY_SUCCESS(err_code);
+
+    // Release twi bus
+    err_code = drv_lis2de12_close();
+    VERIFY_SUCCESS(err_code);
+
+    return NRF_SUCCESS;
+}
+
+uint32_t drv_read_interrupt_ia1(void){
+
+  int err_code;
+  uint8_t tmp;
+
+  err_code = drv_lis2de12_open(&m_drv_acc.cfg);
+  VERIFY_SUCCESS(err_code);
+
+  err_code = reg_read(INT1_SRC, &tmp);
+  VERIFY_SUCCESS(err_code);
+
+  // Release twi bus
+  err_code = drv_lis2de12_close();
+  VERIFY_SUCCESS(err_code);
+
+  NRF_LOG_INFO("INT1_SRC(0x%x): 0x%x",INT1_SRC, tmp);
+
+  return NRF_SUCCESS;
+}
+
 
 uint32_t drv_acc_disable(void) {
     uint32_t err_code = NRF_SUCCESS;
@@ -219,9 +364,13 @@ uint32_t drv_acc_disable(void) {
     return err_code;
 }
 
+
+//-----------------------------------------------------------------------------------------------------------------------------------------
+// getting the data
+
 uint32_t drv_acc_get(float *p_acc) {
     uint32_t err_code = NRF_SUCCESS;
-    uint8_t raw_val[6];
+    int8_t raw_val[3];
 
     VERIFY_PARAM_NOT_NULL(p_acc);
 
@@ -232,11 +381,12 @@ uint32_t drv_acc_get(float *p_acc) {
     err_code = drv_lis2de12_acceleration_get(raw_val);
     VERIFY_SUCCESS(err_code);
 
-    // Currently we use the accelerometer with +/-2g
-    // TODO manage automatically full scale selection
-    p_acc[0] = (float)(raw_val[0]) * ACC_SCALE_2G;
-    p_acc[1] = (float)(raw_val[1]) * ACC_SCALE_2G;
-    p_acc[2] = (float)(raw_val[2]) * ACC_SCALE_2G;
+    float acc_scale = drv_get_scale_factor();  
+    
+
+    p_acc[0] = (float)(raw_val[0]) * acc_scale;
+    p_acc[1] = (float)(raw_val[1]) * acc_scale;
+    p_acc[2] = (float)(raw_val[2]) * acc_scale;
 
     // Release twi bus
     err_code = drv_lis2de12_close();
@@ -344,4 +494,21 @@ uint32_t drv_acc_get3(double *p_acc) {
     VERIFY_SUCCESS(err_code);
 
     return err_code;
+}
+
+float drv_get_scale_factor(void){
+  switch (m_drv_acc.full_scale) {
+
+    case BITS_FS_2G:
+      return ACC_SCALE_2G;
+    case BITS_FS_4G:
+      return ACC_SCALE_4G;
+    case BITS_FS_8G:
+      return ACC_SCALE_8G;
+    case BITS_FS_16G:
+      return ACC_SCALE_16G;
+    defualt:
+        // this is an invalid value
+        VERIFY_SUCCESS(NRF_ERROR_INVALID_PARAM);
+  }
 }

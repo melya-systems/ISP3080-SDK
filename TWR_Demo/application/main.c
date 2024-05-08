@@ -37,6 +37,7 @@
 #include "drv_acc.h"
 #include "nrf_drv_twi.h"
 
+#include "drv_lis2de12.h"
 
 APP_TIMER_DEF(m_repeated_timer_id); 
 
@@ -272,8 +273,9 @@ void ble_mgmt_module_init(void) {
 
 
 void event_handler(drv_acc_evt_t const *p_evt){
-  NRF_LOG_INFO("TODO.");
-
+  NRF_LOG_INFO("Interrupt INTx activate: INT%d", p_evt->type);
+  int err_code =  app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(10), NULL);
+  APP_ERROR_CHECK(err_code);
 }
 
 /**@brief Timeout/Callback function of the timer m_repeated_timer_id 
@@ -284,6 +286,7 @@ void event_handler(drv_acc_evt_t const *p_evt){
 
 static void repeated_timer_handler(void * p_context)
 {
+/*
 #if algo_choice == 1
 #pragma message("InsightSIP solution")
     static float accel_data[3] = {0};
@@ -301,9 +304,27 @@ static void repeated_timer_handler(void * p_context)
 #else
   #error Unsupported choice setting
 #endif
-    NRF_LOG_INFO("x = " NRF_LOG_FLOAT_MARKER " m/s*s", NRF_LOG_FLOAT(accel_data[0]));
-    NRF_LOG_INFO("y = " NRF_LOG_FLOAT_MARKER " m/s*s", NRF_LOG_FLOAT(accel_data[1]));
-    NRF_LOG_INFO("z = " NRF_LOG_FLOAT_MARKER " m/s*s", NRF_LOG_FLOAT(accel_data[2]));
+    NRF_LOG_INFO("x = " NRF_LOG_FLOAT_MARKER " mg", NRF_LOG_FLOAT(accel_data[0]*1000));
+    NRF_LOG_INFO("y = " NRF_LOG_FLOAT_MARKER " mg", NRF_LOG_FLOAT(accel_data[1]*1000));
+    NRF_LOG_INFO("z = " NRF_LOG_FLOAT_MARKER " mg", NRF_LOG_FLOAT(accel_data[2]*1000));
+*/
+  
+  int err_code;
+  drv_read_interrupt_ia1();
+  APP_ERROR_CHECK(err_code);
+  for(size_t i = 0; i< 3; i++){
+    float accel_data[3] = {0};
+    drv_acc_get(accel_data);
+    NRF_LOG_INFO("x = " NRF_LOG_FLOAT_MARKER " mg", NRF_LOG_FLOAT(accel_data[0]*1000));
+    NRF_LOG_INFO("y = " NRF_LOG_FLOAT_MARKER " mg", NRF_LOG_FLOAT(accel_data[1]*1000));
+    NRF_LOG_INFO("z = " NRF_LOG_FLOAT_MARKER " mg", NRF_LOG_FLOAT(accel_data[2]*1000));
+
+  }
+  
+    err_code = drv_read_interrupt_ia1();
+    APP_ERROR_CHECK(err_code);
+
+  NRF_LOG_INFO("---------------------------------------------------------------------");
 }
 
 
@@ -312,7 +333,6 @@ static void repeated_timer_handler(void * p_context)
 int main(void) {
 
     uint32_t err_code;
-    
     // Initialize Logs, Power & Timer.
     log_init();
     timers_init();
@@ -341,18 +361,30 @@ int main(void) {
     nrf_gpio_pin_set(NRF_GPIO_PIN_MAP(1, 6));
     nrf_delay_ms(5);
 
+    // initialize the driver.
     drv_acc_init(&lis2dh_params);
-    drv_acc_enable();
 
+    // enable the driver with the defined frequency and scale
+    drv_acc_enable(BITS_FS_2G, BITS_ODR_10HZ);
+
+    // define the level and duration of the interrupt
+    uint8_t duration = 0x00;
+    uint32_t threshold_in_mg =1800;
+    drv_acc_interrupt_enable_ia1(threshold_in_mg, duration);
+    drv_acc_check_reg();
+
+
+    
     err_code = app_timer_create(&m_repeated_timer_id,
-                        APP_TIMER_MODE_REPEATED,
+                        APP_TIMER_MODE_SINGLE_SHOT,
                         repeated_timer_handler);
-
     APP_ERROR_CHECK(err_code);
-    err_code = app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(1000), NULL);
+      /*
+    err_code = app_timer_start(m_repeated_timer_id, APP_TIMER_TICKS(100), NULL);
     APP_ERROR_CHECK(err_code);
+    */
 
-/*
+
     // Initialize modules
 #if defined(BOARD_ISP3080_UX_TG)
     batt_meas_module_init();
@@ -363,7 +395,7 @@ int main(void) {
     // Start modules.
     m_range_ble_uuid_get(&adv_uuid);
     m_ble_mgmt_start(adv_uuid);
-*/
+
     // Set current mode pin before starting ranging operation (only for TAGs).
     if (PIN_CURR_MODE != 255) {
         nrf_gpio_pin_set(PIN_CURR_MODE);

@@ -70,7 +70,7 @@ static __inline uint32_t twi_close(void) {
  * @retval NRF_SUCCESS             If operation was successful.
  * @retval NRF_ERROR_BUSY          If the TWI drivers are busy.
  */
-static uint32_t reg_read(uint8_t reg_addr, uint8_t *p_reg_val) {
+uint32_t reg_read(uint8_t reg_addr, uint8_t *p_reg_val) {
     uint32_t err_code;
 
     err_code = nrf_drv_twi_tx(m_lis2de12.p_cfg->p_twi_instance,
@@ -97,7 +97,7 @@ static uint32_t reg_read(uint8_t reg_addr, uint8_t *p_reg_val) {
  * @retval NRF_SUCCESS             If operation was successful.
  * @retval NRF_ERROR_BUSY          If the TWI drivers are busy.
  */
-static uint32_t regs_read(uint8_t reg_addr, uint8_t *p_reg_val, uint8_t length) {
+uint32_t regs_read(uint8_t reg_addr, uint8_t *p_reg_val, uint8_t length) {
     uint32_t err_code;
 
     err_code = nrf_drv_twi_tx(m_lis2de12.p_cfg->p_twi_instance,
@@ -208,7 +208,48 @@ uint32_t drv_lis2de12_cfg_set(drv_lis2de12_cfg_t const *const p_cfg) {
 }
 
 uint32_t drv_lis2de12_cfg_get(drv_lis2de12_cfg_t *p_cfg) {
-    //TO BE IMPLEMENTED
+    uint32_t err_code;
+
+        if (p_cfg->reg_selects.ctrl_reg1) {
+        err_code = reg_read(CTRL_REG1, &p_cfg->reg_vals.ctrl_reg1);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.ctrl_reg2) {
+        err_code = reg_read(CTRL_REG2, &p_cfg->reg_vals.ctrl_reg2);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.ctrl_reg3) {
+        err_code = reg_read(CTRL_REG3, &p_cfg->reg_vals.ctrl_reg3);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.ctrl_reg4) {
+        err_code = reg_read(CTRL_REG4, &p_cfg->reg_vals.ctrl_reg4);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.ctrl_reg5) {
+        err_code = reg_read(CTRL_REG5, &p_cfg->reg_vals.ctrl_reg5);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.ctrl_reg6) {
+        err_code = reg_read(CTRL_REG6, &p_cfg->reg_vals.ctrl_reg6);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.click_cfg) {
+        err_code = reg_read(CLICK_CFG, &p_cfg->reg_vals.click_cfg);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.int1_cfg) {
+        err_code = reg_read(INT1_CFG, &p_cfg->reg_vals.int1_cfg);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.int2_cfg) {
+        err_code = reg_read(INT2_CFG, &p_cfg->reg_vals.int2_cfg);
+        VERIFY_SUCCESS(err_code);
+    }
+    if (p_cfg->reg_selects.temp_cfg_reg) {
+        err_code = reg_write(TEMP_CFG_REG, p_cfg->reg_vals.temp_cfg_reg);
+        VERIFY_SUCCESS(err_code);
+    }
 
     return NRF_SUCCESS;
 }
@@ -302,6 +343,37 @@ uint32_t drv_lis2de12_reboot(void) {
 
     return NRF_SUCCESS;
 }
+
+
+uint32_t drv_lis2de12_set_threshold_and_duratio_wakeup(uint8_t threshold,uint8_t duration) {
+    uint32_t err_code;
+
+    DRV_CFG_CHECK(m_lis2de12.p_cfg);
+
+    err_code = reg_write(INT1_THS, threshold);
+    VERIFY_SUCCESS(err_code);
+
+    err_code = reg_write(INT1_DURATION, duration);
+    VERIFY_SUCCESS(err_code);
+
+    return NRF_SUCCESS;
+}
+
+
+uint32_t drv_lis2de12_get_threshold_and_duratio_wakeup(uint8_t *threshold,uint8_t *duration) {
+    uint32_t err_code;
+
+    DRV_CFG_CHECK(m_lis2de12.p_cfg);
+
+    err_code = reg_read(INT1_THS, threshold);
+    VERIFY_SUCCESS(err_code);
+
+    err_code = reg_read(INT1_DURATION, duration);
+    VERIFY_SUCCESS(err_code);
+
+    return NRF_SUCCESS;
+}
+
 
 /**@brief ST Implementation of the driver
  */

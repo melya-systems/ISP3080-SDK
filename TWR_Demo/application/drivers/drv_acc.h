@@ -30,7 +30,9 @@
 /**@brief uwb event types.
  */
 typedef enum {
-    DRV_ACC_EVT_ERROR /**< Error */
+    DRV_ACC_EVT_ERROR = -1, /**< Error */
+     DRV_ACC_EVT_1 = 1, /**< Event pin1  */
+      DRV_ACC_EVT_2 = 2, /**< Event pin2 */
 } drv_acc_evt_type_t;
 
 /**@brief uwb event struct.
@@ -68,7 +70,7 @@ uint32_t drv_acc_init(drv_acc_init_t *p_params);
  *
  * @retval NRF_SUCCESS.
  */
-uint32_t drv_acc_enable(void);
+uint32_t drv_acc_enable(uint8_t full_scale, uint8_t output_data_rate);
 
 /**@brief Function to disable features in the Accelerometer driver.
  *
@@ -85,5 +87,11 @@ uint32_t drv_acc_disable(void);
 uint32_t drv_acc_get(float *acc_value);
 uint32_t drv_acc_get2(float_t *p_acc);
 uint32_t drv_acc_get3(double *p_acc);
+float drv_get_scale_factor(void);
+uint32_t drv_acc_interrupt_enable_ia1(uint32_t threshold,uint8_t duration);
+
+uint32_t drv_acc_check_reg(void);
+uint32_t drv_read_interrupt_ia1(void);
+
 
 #endif

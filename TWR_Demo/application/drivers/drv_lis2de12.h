@@ -306,6 +306,8 @@ uint32_t drv_lis2de12_acceleration_get3(uint8_t *buff);
  */
 uint32_t drv_lis2de12_reboot(void);
 
+uint32_t drv_lis2de12_set_threshold_and_duratio_wakeup(uint8_t threshold,uint8_t duration); 
+uint32_t drv_lis2de12_get_threshold_and_duratio_wakeup(uint8_t *threshold,uint8_t *duration);
 
 /**@brief Functions to return the mg from the raw values of lis2de
 
@@ -319,5 +321,8 @@ float_t lis2de12_from_fs16_to_mg(int16_t lsb);
 
 // Zepyhr OS implementation
 void lis2dh_convert(int16_t raw_val, uint32_t scale,double *val);
+
+uint32_t reg_read(uint8_t reg_addr, uint8_t *p_reg_val);
+uint32_t regs_read(uint8_t reg_addr, uint8_t *p_reg_val, uint8_t length);
 
 #endif
